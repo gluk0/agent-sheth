@@ -1,0 +1,84 @@
+[project]
+name = "agent-scaffold"
+version = "0.1.0"
+description = "Telegram-first AI agent scaffold built on Google ADK"
+readme = "README.md"
+authors = [
+    { name = "rich", email = "rich@gluk0.sh" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aiogram>=3.29.1",
+    "fal-client>=1.0.0",
+    "feedparser>=6.0.12",
+    "google-adk[db]>=2.5.0",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.14.2",
+    "structlog>=26.1.0",
+]
+
+[project.scripts]
+scaffold = "scaffold.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.9.24,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "scaffold"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "SIM", # simplify
+    "RUF", # ruff-specific
+    "ASYNC", # async pitfalls
+]
+ignore = [
+    "ASYNC240", # tiny Path IO in async funcs is fine; we don't use trio/anyio paths
+]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+mypy_path = "src"
+packages = ["scaffold"]
+# google-adk ships partial type info; don't fail on its internals
+[[tool.mypy.overrides]]
+module = ["google.adk.*", "google.genai.*"]
+follow_untyped_imports = true
+
+[[tool.mypy.overrides]]
+module = ["feedparser", "feedparser.*", "fal_client", "fal_client.*"]
+ignore_missing_imports = true
+follow_untyped_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    # SequentialAgent is the correct choice until ADK's Workflow supports
+    # being an LlmAgent sub-agent (see pipeline.py).
+    "ignore:SequentialAgent is deprecated:DeprecationWarning",
+    "ignore:BaseAgentConfig is deprecated:DeprecationWarning",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.15.22",
+]

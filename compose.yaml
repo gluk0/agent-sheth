@@ -1,0 +1,9 @@
+services:
+  scaffold:
+    build: .
+    env_file: .env
+    environment:
+      LOG_JSON: "true"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

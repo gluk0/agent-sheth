@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import FSInputFile, Message
@@ -48,10 +50,11 @@ _HELP_TEXT = (
 )
 
 _CUSTOM_USAGE = (
-    "To make a custom video, send a photo with a caption like:\n\n"
-    "/custom neon smoke swirling around it, slow cosmic zoom, vhs grain\n\n"
-    "Your image seeds the video and your text drives the motion. The text "
-    "is also used as the caption."
+    "Make a custom video two ways:\n\n"
+    "1. Text only:\n/custom neon smoke swirling, slow cosmic zoom, vhs grain\n\n"
+    "2. Or send a photo with that as its caption - your image seeds the "
+    "video and the text drives the motion.\n\n"
+    "The text is also used as the caption."
 )
 
 
@@ -162,9 +165,40 @@ async def on_job(message: Message, command: CommandObject, settings: Settings) -
         await message.answer(chunk)
 
 
+async def _render_custom(
+    message: Message, settings: Settings, prompt: str, image_path: Path | None = None
+) -> None:
+    if message.bot is None:
+        return
+    await message.answer("Rendering your custom video...")
+    try:
+        async with ChatActionSender.upload_video(bot=message.bot, chat_id=message.chat.id):
+            result = await create_custom_video(
+                prompt=prompt,
+                image_path=image_path,
+                backend=create_backend(settings),
+                output_dir=settings.output_dir,
+            )
+    except RenderError as exc:
+        logger.exception("custom.failed")
+        await message.answer(f"Rendering failed: {exc}")
+        return
+    except Exception:
+        logger.exception("custom.failed")
+        await message.answer("Something went wrong rendering that - check the logs.")
+        return
+
+    await message.answer_video(FSInputFile(result.video_path))
+    for chunk in _chunks(f"{result.caption}\n\nJob: {result.job_id}"):
+        await message.answer(chunk)
+
+
 @router.message(Command("custom"))
-async def on_custom_without_photo(message: Message) -> None:
-    await message.answer(_CUSTOM_USAGE)
+async def on_custom_text(message: Message, command: CommandObject, settings: Settings) -> None:
+    if not command.args:
+        await message.answer(_CUSTOM_USAGE)
+        return
+    await _render_custom(message, settings, command.args.strip())
 
 
 @router.message(F.photo)
@@ -181,28 +215,7 @@ async def on_photo(message: Message, settings: Settings) -> None:
     uploads_dir.mkdir(parents=True, exist_ok=True)
     image_path = uploads_dir / f"{photo.file_unique_id}.jpg"
     await message.bot.download(photo, destination=image_path)
-
-    await message.answer("Rendering your custom video...")
-    try:
-        async with ChatActionSender.upload_video(bot=message.bot, chat_id=message.chat.id):
-            result = await create_custom_video(
-                image_path=image_path,
-                prompt=prompt,
-                backend=create_backend(settings),
-                output_dir=settings.output_dir,
-            )
-    except RenderError as exc:
-        logger.exception("custom.failed")
-        await message.answer(f"Rendering failed: {exc}")
-        return
-    except Exception:
-        logger.exception("custom.failed")
-        await message.answer("Something went wrong rendering that - check the logs.")
-        return
-
-    await message.answer_video(FSInputFile(result.video_path))
-    for chunk in _chunks(f"{result.caption}\n\nJob: {result.job_id}"):
-        await message.answer(chunk)
+    await _render_custom(message, settings, prompt, image_path)
 
 
 @router.message(F.text)

@@ -28,14 +28,14 @@ class CustomVideoResult:
 
 async def create_custom_video(
     *,
-    image_path: Path,
     prompt: str,
     backend: VideoBackend,
     output_dir: Path,
+    image_path: Path | None = None,
     duration_seconds: float = 8.0,
     aspect_ratio: str = "9:16",
 ) -> CustomVideoResult:
-    """Render one video from a source image and a raw text prompt."""
+    """Render one video from a raw text prompt, optionally seeded by an image."""
     job = ContentJob(
         topic="custom",
         headline=prompt[:100],
@@ -49,14 +49,22 @@ async def create_custom_video(
     (job_dir / "job.json").write_text(job.model_dump_json(indent=2), encoding="utf-8")
     (job_dir / "caption.txt").write_text(job.caption_block, encoding="utf-8")
 
-    logger.info("custom.rendering", job_id=job_id, backend=backend.name)
-    clip = await backend.render_clip_from_image(
-        prompt=prompt,
-        image_path=image_path,
-        duration_seconds=duration_seconds,
-        aspect_ratio=aspect_ratio,
-        out_path=job_dir / "clip_00.mp4",
-    )
+    logger.info("custom.rendering", job_id=job_id, backend=backend.name, image=bool(image_path))
+    if image_path is not None:
+        clip = await backend.render_clip_from_image(
+            prompt=prompt,
+            image_path=image_path,
+            duration_seconds=duration_seconds,
+            aspect_ratio=aspect_ratio,
+            out_path=job_dir / "clip_00.mp4",
+        )
+    else:
+        clip = await backend.render_clip(
+            prompt=prompt,
+            duration_seconds=duration_seconds,
+            aspect_ratio=aspect_ratio,
+            out_path=job_dir / "clip_00.mp4",
+        )
     final = await stitch_clips([clip], job_dir / "final.mp4")
     logger.info("custom.done", job_id=job_id, path=str(final))
     return CustomVideoResult(job_id=job_id, video_path=final, caption=job.caption_block)
